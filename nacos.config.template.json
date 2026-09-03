@@ -1,9 +1,9 @@
 {
   "repository": {
-    "url": "https://github.com/lagrange10/codex-skills-personal.git",
+    "url": "",
     "branch": "main",
     "visibility": "private",
-    "status": "verified"
+    "status": "not-configured"
   },
   "paths": {
     "sourceRoot": "skills/personal",
