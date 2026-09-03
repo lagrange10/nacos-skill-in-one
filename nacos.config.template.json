@@ -1,0 +1,14 @@
+{
+  "repository": {
+    "url": "https://github.com/lagrange10/codex-skills-personal.git",
+    "branch": "main",
+    "visibility": "private",
+    "status": "verified"
+  },
+  "paths": {
+    "sourceRoot": "skills/personal",
+    "codexSkillsRoot": "%USERPROFILE%/.codex/skills",
+    "backupRoot": "%USERPROFILE%/.codex/skill-link-backups"
+  },
+  "linkType": "junction"
+}
