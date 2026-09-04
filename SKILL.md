@@ -30,7 +30,7 @@ Use an explicit mode when the user provides one:
 | --- | --- |
 | `bootstrap` | 在新电脑初始化或克隆 Skill 仓库，生成配置并准备本地发现目录。 |
 | `upload` | 执行上传方流程；由 AI 预检并自动选择安全可行的上传媒介。 |
-| `adopt <skill>` | 将本机现有的本地 Skill 纳入仓库治理，迁入唯一信源并建立 Junction。 |
+| `adopt <skill>` | 将本机现有的本地 Skill 纳入仓库治理，迁入唯一信源、建立 Junction，并默认提交推送到 GitHub。 |
 | `sync` | 执行接入方流程：拉取 GitHub、建立 Junction 并校验本地。 |
 | `rename <old> <new>` | 在仓库和本机发现目录同时迁移 Skill 目录；旧 Junction 移到可恢复备份目录。 |
 
@@ -51,7 +51,7 @@ Use an explicit mode when the user provides one:
 
 ## 纳入治理：adopt
 
-`adopt <skill>` 用于把当前 Codex 发现目录中的本地 Skill 接入仓库治理。它只处理指定 Skill，不扫描或迁移其他本地 Skill；默认完成本地接入并留下待上传的 Git 变更，不自动推送 GitHub，除非用户同时明确要求上传。
+`adopt <skill>` 用于把当前 Codex 发现目录中的本地 Skill 接入仓库治理。它只处理指定 Skill，不扫描或迁移其他本地 Skill；默认完成本地接入、校验、有限范围的 Git 提交与 GitHub 推送。只有用户明确说“仅本地纳管”“不要上传”或等价指令时，才保留待上传变更而不推送。
 
 1. 将 `<skill>` 解析为 Skill 名称或本地 Skill 目录。优先检查用户给出的路径，其次检查 `<paths.codexSkillsRoot>\personal\<skill>`；目录名必须符合小写字母、数字和连字符组成的 Skill 命名规则。
 2. 如果目标已经位于 `<paths.sourceRoot>\<skill>`，先校验它已经是仓库信源；如果发现目录已是指向该路径的 Junction，报告“已纳入治理”并停止，不重复迁移。
@@ -61,7 +61,7 @@ Use an explicit mode when the user provides one:
 6. 将原发现目录或原 Junction 移到 `<paths.backupRoot>\<skill>-<timestamp>` 作为可恢复备份；不得删除原目录，也不得删除 Junction 指向的外部目标。跨卷移动时先复制并校验，再保留原位置的可恢复备份。
 7. 在 `<paths.codexSkillsRoot>\personal\<skill>` 创建指向仓库源目录的 Junction，并用 `validate-skill-links.ps1` 验证目标、链接类型和内容。
 8. 从 `skill-links.json.localOnlySkills` 移除该 Skill（如果存在），再执行 `reconcile`；保留其他真实存在的 `localOnlySkills`，不得为了纳入一个 Skill 改写无关条目。
-9. 运行 `git diff --check` 和目标 Skill 校验，只暂存新 Skill 目录及 `skill-links.json`；提交前报告迁移前路径、仓库路径、备份路径和文件清单。
+9. 运行 `git diff --check` 和目标 Skill 校验，只暂存新 Skill 目录及 `skill-links.json`；随后按“上传共同预检”和 Git 优先策略完成该目标的提交与推送。提交前说明目标仓库、分支、文件清单和选定媒介；远端已前进、认证失败、内容审查失败或推送被拒绝时停止，不把失败静默降级为本地完成。
 
 `adopt` 是显式的本地迁移操作。若原目录存在未保存的编辑器内容、目标路径冲突、内容校验不一致或备份无法创建，停止并报告阻塞点，不强行覆盖或删除。
 
