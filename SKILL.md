@@ -47,6 +47,8 @@ Use an explicit mode when the user provides one:
 
 显式参数优先于语境推断；参数与用户明确意图冲突时停止并说明冲突。
 
+任何会改变仓库 Skill 集合或本机发现入口的流程，都必须自动维护 `skill-links.json`；`upload`、`adopt`、`rename` 和 `sync` 在结束前都要重新检查清单，不能只修改 Skill 文件而留下过期登记。
+
 ## 纳入治理：adopt
 
 `adopt <skill>` 用于把当前 Codex 发现目录中的本地 Skill 接入仓库治理。它只处理指定 Skill，不扫描或迁移其他本地 Skill；默认完成本地接入并留下待上传的 Git 变更，不自动推送 GitHub，除非用户同时明确要求上传。
@@ -58,10 +60,23 @@ Use an explicit mode when the user provides one:
 5. 将本地 Skill 内容写入 `<paths.sourceRoot>\<skill>`，逐文件校验内容与原目录一致。原发现目录不得继续作为第二份可编辑信源。
 6. 将原发现目录或原 Junction 移到 `<paths.backupRoot>\<skill>-<timestamp>` 作为可恢复备份；不得删除原目录，也不得删除 Junction 指向的外部目标。跨卷移动时先复制并校验，再保留原位置的可恢复备份。
 7. 在 `<paths.codexSkillsRoot>\personal\<skill>` 创建指向仓库源目录的 Junction，并用 `validate-skill-links.ps1` 验证目标、链接类型和内容。
-8. 从 `skill-links.json.localOnlySkills` 移除该 Skill（如果存在）；保留其他 `localOnlySkills`，不得为了纳入一个 Skill 改写无关条目。
+8. 从 `skill-links.json.localOnlySkills` 移除该 Skill（如果存在），再执行 `reconcile`；保留其他真实存在的 `localOnlySkills`，不得为了纳入一个 Skill 改写无关条目。
 9. 运行 `git diff --check` 和目标 Skill 校验，只暂存新 Skill 目录及 `skill-links.json`；提交前报告迁移前路径、仓库路径、备份路径和文件清单。
 
 `adopt` 是显式的本地迁移操作。若原目录存在未保存的编辑器内容、目标路径冲突、内容校验不一致或备份无法创建，停止并报告阻塞点，不强行覆盖或删除。
+
+## 自动维护 `skill-links.json`
+
+Skill 内部自动执行清单对账，让 `skill-links.json` 与当前本机发现目录保持一致；该步骤不作为用户命令，不迁移 Skill、不删除文件、不自动推送远端。
+
+1. 读取 `nacos.config.json`、`skill-links.json`、仓库 `paths.sourceRoot` 和发现目录 `<paths.codexSkillsRoot>\personal`。
+2. 枚举仓库源目录下的个人 Skill，以及发现目录下的一级 Skill 目录；忽略 `legacyPaths` 指向的历史入口和仓库外无关目录。
+3. 对每个仓库 Skill 校验发现目录是否为指向对应源目录的 Junction；缺失、普通副本或目标错误只报告问题，由 `adopt` 或 `sync` 修复，不在 `reconcile` 中强行覆盖。
+4. 将“存在于发现目录、但不在仓库源目录”的 Skill 名称去重、排序后写入 `localOnlySkills`；已不存在的旧条目移除。保留 `schemaVersion`、路径、链接类型和 `legacyPaths` 等无关字段。
+5. 清单内容没有变化时不写文件；有变化时只修改 `skill-links.json`，随后运行 `validate-skill-links.ps1` 并报告新增、移除和未解决的链接问题。
+6. `upload` 必须在检查待上传文件前自动执行清单对账；如果清单发生变化，将 `skill-links.json` 与本次 Skill 变更放入同一次提交。`adopt`、`rename` 和 `sync` 完成本地处理后也必须自动执行它。
+
+清单对账只登记实际存在的本地额外 Skill，不把不存在的名称长期留在 `localOnlySkills`，也不把仓库 Skill 同时登记为 `localOnlySkills`。
 
 ## 首次使用
 
@@ -104,11 +119,12 @@ Git 配置检查只对当前任务需要的仓库生效。不要因为一次上�
 无论使用哪种方式，都必须先执行：
 
 1. 读取 `<repo>\nacos.config.json`，解析远端 URL、分支、`paths.sourceRoot` 和目标 Skill 相对路径；上传源只能是仓库信源目录，不能是 `.codex\skills` 发现目录的副本。
-2. 确认目标文件清单：单目标上传只包含该 Skill 目录内的预期文件；全量上传包含所有检测到变更的个人 Skill 目录，除此之外不得混入其他文件。没有实际变更时停止上传。
-3. 运行仓库提供的 `quick_validate.py`；若仓库没有该脚本，执行等价的 frontmatter、文件存在性和脚本语法校验，并明确记录替代校验。
-4. 检查 diff 或待上传内容，不得包含公司代码、内部路径、凭证、Token 或不属于本 Skill 的文件。
-5. 读取远端当前提交或目标文件版本，发现远端已前进且本地基于旧版本时停止，不覆盖远端改动。
-6. 在实际提交前向用户说明目标仓库、分支、文件清单和 AI 选定的上传方式；提交后记录 commit SHA、Skill 名称和验证结果。
+2. 先执行 `reconcile`；如果 `skill-links.json` 发生变化，将它纳入本次变更清单。
+3. 确认目标文件清单：单目标上传只包含该 Skill 目录内的预期文件及必要的 `skill-links.json`；全量上传包含所有检测到变更的个人 Skill 目录及清单文件，除此之外不得混入其他文件。没有实际变更时停止上传。
+4. 运行仓库提供的 `quick_validate.py`；若仓库没有该脚本，执行等价的 frontmatter、文件存在性和脚本语法校验，并明确记录替代校验。
+5. 检查 diff 或待上传内容，不得包含公司代码、内部路径、凭证、Token 或不属于本 Skill 的文件。
+6. 读取远端当前提交或目标文件版本，发现远端已前进且本地基于旧版本时停止，不覆盖远端改动。
+7. 在实际提交前向用户说明目标仓库、分支、文件清单和 AI 选定的上传方式；提交后记录 commit SHA、Skill 名称和验证结果。
 
 ### 上传目标解析
 
@@ -149,7 +165,7 @@ AI 只有在 Git 配置或 Git 上传无法完成时才进入 `gh` 命令行路�
 AI 进入 `git` 首选路径时：
 
 1. 确认 `git --version`、仓库 remote、当前分支和工作区状态；先用 `git diff --check` 检查空白错误。
-2. 只对目标 Skill 文件执行 `git add -- <paths>`，再次检查 `git diff --cached --name-status` 和 staged diff，禁止混入其他工作区改动。
+2. 只对目标 Skill 文件及 `reconcile` 产生的 `skill-links.json` 执行 `git add -- <paths>`，再次检查 `git diff --cached --name-status` 和 staged diff，禁止混入其他工作区改动。
 3. 远端分支有更新时先执行 `git pull --ff-only`；出现分叉、冲突或认证失败时停止，不使用 force push。
 4. 创建清晰提交并推送配置中的目标分支；目标分支受保护或 push 被拒绝时，记录原因并进入 `gh`，必要时再进入 `browser` 创建分支和 PR。
 5. 推送后读取远端 log 或 PR，确认 commit SHA、Skill 名称、文件清单和验证结果。
